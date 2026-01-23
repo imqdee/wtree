@@ -31,6 +31,9 @@ enum Command {
     Switch {
         /// Worktree name
         name: String,
+        /// Copy .env* files (except .env.example) from current worktree to destination
+        #[arg(short = 'e', long)]
+        envs: bool,
     },
     /// Create a new worktree
     #[command(visible_alias = "c")]
@@ -61,7 +64,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     match cli.command {
         Command::Clone { url, switch } => commands::clone::run(&url, switch)?,
         Command::Init { shell } => commands::init::run(&shell)?,
-        Command::Switch { name } => commands::switch::run(&name)?,
+        Command::Switch { name, envs } => commands::switch::run(&name, envs)?,
         Command::Create { name, branch, switch } => {
             commands::create::run(&name, branch.as_deref(), switch)?
         }
