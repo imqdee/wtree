@@ -1,0 +1,163 @@
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
+#[derive(Debug)]
+pub struct GitError {
+    pub message: String,
+}
+
+impl std::fmt::Display for GitError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.message)
+    }
+}
+
+impl std::error::Error for GitError {}
+
+impl GitError {
+    pub fn new(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+        }
+    }
+}
+
+/// Execute a git command and return its output
+pub fn run_git(args: &[&str]) -> Result<String, GitError> {
+    let output = Command::new("git")
+        .args(args)
+        .output()
+        .map_err(|e| GitError::new(format!("Failed to execute git: {}", e)))?;
+
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        Err(GitError::new(stderr))
+    }
+}
+
+/// Execute a git command in a specific directory
+pub fn run_git_in_dir(dir: &Path, args: &[&str]) -> Result<String, GitError> {
+    let output = Command::new("git")
+        .current_dir(dir)
+        .args(args)
+        .output()
+        .map_err(|e| GitError::new(format!("Failed to execute git: {}", e)))?;
+
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        Err(GitError::new(stderr))
+    }
+}
+
+/// Find the hub root (bare repo root) from the current directory.
+/// Works whether we're in a worktree or in the hub itself.
+pub fn find_hub_root() -> Result<PathBuf, GitError> {
+    let current_dir =
+        std::env::current_dir().map_err(|e| GitError::new(format!("Cannot get current dir: {}", e)))?;
+
+    // Walk up the directory tree looking for .bare directory or .git file
+    let mut dir = current_dir.as_path();
+    loop {
+        // Check if this directory contains .bare (hub root)
+        let bare_path = dir.join(".bare");
+        if bare_path.exists() && bare_path.is_dir() {
+            return Ok(dir.to_path_buf());
+        }
+
+        // Check if there's a .git file (not directory) pointing to .bare
+        let git_path = dir.join(".git");
+        if git_path.exists() && git_path.is_file() {
+            // Read the .git file to find the bare repo
+            let content = std::fs::read_to_string(&git_path)
+                .map_err(|e| GitError::new(format!("Cannot read .git file: {}", e)))?;
+
+            if let Some(gitdir) = content.strip_prefix("gitdir: ") {
+                let gitdir = gitdir.trim();
+                let gitdir_path = if Path::new(gitdir).is_absolute() {
+                    PathBuf::from(gitdir)
+                } else {
+                    dir.join(gitdir)
+                };
+
+                // The gitdir should point to .bare, so hub root is its parent
+                if let Some(hub_root) = gitdir_path.parent() {
+                    let hub_root = hub_root.canonicalize().unwrap_or_else(|_| hub_root.to_path_buf());
+                    if hub_root.join(".bare").exists() {
+                        return Ok(hub_root);
+                    }
+                }
+            }
+        }
+
+        // Move up one directory
+        match dir.parent() {
+            Some(parent) => dir = parent,
+            None => break,
+        }
+    }
+
+    Err(GitError::new(
+        "Not inside a wtree repository (cannot find .bare directory)",
+    ))
+}
+
+/// Check if we're inside a worktree (as opposed to the hub root)
+pub fn is_inside_worktree() -> bool {
+    run_git(&["rev-parse", "--is-inside-work-tree"])
+        .map(|s| s == "true")
+        .unwrap_or(false)
+}
+
+/// Worktree information
+#[derive(Debug)]
+pub struct Worktree {
+    pub path: PathBuf,
+    pub head: String,
+    pub branch: Option<String>,
+}
+
+/// Get list of worktrees from git worktree list
+pub fn get_worktree_list(hub_root: &Path) -> Result<Vec<Worktree>, GitError> {
+    let output = run_git_in_dir(hub_root, &["worktree", "list", "--porcelain"])?;
+    let mut worktrees = Vec::new();
+    let mut current_path: Option<PathBuf> = None;
+    let mut current_head: Option<String> = None;
+    let mut current_branch: Option<String> = None;
+
+    for line in output.lines() {
+        if let Some(path) = line.strip_prefix("worktree ") {
+            // Save previous worktree if exists
+            if let (Some(path), Some(head)) = (current_path.take(), current_head.take()) {
+                worktrees.push(Worktree {
+                    path,
+                    head,
+                    branch: current_branch.take(),
+                });
+            }
+            current_path = Some(PathBuf::from(path));
+            current_branch = None;
+        } else if let Some(head) = line.strip_prefix("HEAD ") {
+            current_head = Some(head.to_string());
+        } else if let Some(branch) = line.strip_prefix("branch ") {
+            current_branch = Some(branch.to_string());
+        } else if line == "bare" {
+            // Mark bare repo
+            current_head = Some("(bare)".to_string());
+        }
+    }
+
+    // Don't forget the last one
+    if let (Some(path), Some(head)) = (current_path, current_head) {
+        worktrees.push(Worktree {
+            path,
+            head,
+            branch: current_branch,
+        });
+    }
+
+    Ok(worktrees)
+}
