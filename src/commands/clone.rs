@@ -53,9 +53,9 @@ fn extract_repo_name(url: &str) -> Result<String, GitError> {
     Ok(name.to_string())
 }
 
-pub fn run(url: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run(url: &str, switch: bool) -> Result<(), Box<dyn std::error::Error>> {
     let repo_name = extract_repo_name(url)?;
-    let repo_dir = Path::new(&repo_name);
+    let repo_dir = std::env::current_dir()?.join(&repo_name);
 
     if repo_dir.exists() {
         return Err(Box::new(GitError::new(format!(
@@ -64,7 +64,9 @@ pub fn run(url: &str) -> Result<(), Box<dyn std::error::Error>> {
         ))));
     }
 
-    println!("Cloning {} into {}/", url, repo_name);
+    if !switch {
+        println!("Cloning {} into {}/", url, repo_name);
+    }
 
     // Create the repo directory
     fs::create_dir(&repo_dir)?;
@@ -73,6 +75,8 @@ pub fn run(url: &str) -> Result<(), Box<dyn std::error::Error>> {
     let bare_path = repo_dir.join(".bare");
     let status = Command::new("git")
         .args(["clone", "--bare", url, bare_path.to_str().unwrap()])
+        .stdout(if switch { Stdio::null() } else { Stdio::inherit() })
+        .stderr(if switch { Stdio::null() } else { Stdio::inherit() })
         .status()?;
 
     if !status.success() {
@@ -96,7 +100,7 @@ pub fn run(url: &str) -> Result<(), Box<dyn std::error::Error>> {
         ])
         .status()?;
 
-    if !config_status.success() {
+    if !config_status.success() && !switch {
         eprintln!("Warning: Failed to configure fetch refspec");
     }
 
@@ -106,29 +110,46 @@ pub fn run(url: &str) -> Result<(), Box<dyn std::error::Error>> {
         let worktree_status = Command::new("git")
             .current_dir(&repo_dir)
             .args(["worktree", "add", &default_branch, &default_branch])
+            .stdout(if switch { Stdio::null() } else { Stdio::inherit() })
+            .stderr(if switch { Stdio::null() } else { Stdio::inherit() })
             .status()?;
 
         if worktree_status.success() {
-            println!("Created bare repository at {}/", repo_name);
-            println!(
-                "Created worktree '{}' at {}/{}/",
-                default_branch, repo_name, default_branch
-            );
-            println!("Use 'cd {}/{}' to start working", repo_name, default_branch);
+            if switch {
+                // Print only the path for shell wrapper to cd into
+                println!("{}", repo_dir.join(&default_branch).display());
+            } else {
+                println!("Created bare repository at {}/", repo_name);
+                println!(
+                    "Created worktree '{}' at {}/{}/",
+                    default_branch, repo_name, default_branch
+                );
+                println!("Use 'cd {}/{}' to start working", repo_name, default_branch);
+            }
+        } else {
+            if switch {
+                // Fallback to repo root if worktree creation failed
+                println!("{}", repo_dir.display());
+            } else {
+                println!("Created bare repository at {}/", repo_name);
+                eprintln!("Warning: Failed to create default branch worktree");
+                println!(
+                    "Use 'cd {}' then 'wt create <name>' to create a worktree",
+                    repo_name
+                );
+            }
+        }
+    } else {
+        if switch {
+            // No default branch detected, switch to repo root
+            println!("{}", repo_dir.display());
         } else {
             println!("Created bare repository at {}/", repo_name);
-            eprintln!("Warning: Failed to create default branch worktree");
             println!(
                 "Use 'cd {}' then 'wt create <name>' to create a worktree",
                 repo_name
             );
         }
-    } else {
-        println!("Created bare repository at {}/", repo_name);
-        println!(
-            "Use 'cd {}' then 'wt create <name>' to create a worktree",
-            repo_name
-        );
     }
 
     Ok(())

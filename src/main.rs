@@ -17,6 +17,9 @@ enum Command {
     Clone {
         /// Repository URL (HTTPS or SSH)
         url: String,
+        /// Switch to the default branch worktree after cloning
+        #[arg(short, long)]
+        switch: bool,
     },
     /// Output shell integration script
     Init {
@@ -35,8 +38,11 @@ enum Command {
         /// Worktree name
         name: String,
         /// Branch to checkout (uses current HEAD if not specified)
-        #[arg(short, long)]
+        #[arg(short = 'b', long)]
         branch: Option<String>,
+        /// Switch to the worktree after creating
+        #[arg(short, long)]
+        switch: bool,
     },
     /// List all worktrees
     #[command(visible_alias = "ls")]
@@ -53,10 +59,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
     match cli.command {
-        Command::Clone { url } => commands::clone::run(&url)?,
+        Command::Clone { url, switch } => commands::clone::run(&url, switch)?,
         Command::Init { shell } => commands::init::run(&shell)?,
         Command::Switch { name } => commands::switch::run(&name)?,
-        Command::Create { name, branch } => commands::create::run(&name, branch.as_deref())?,
+        Command::Create { name, branch, switch } => {
+            commands::create::run(&name, branch.as_deref(), switch)?
+        }
         Command::List => commands::list::run()?,
         Command::Remove { name } => commands::remove::run(&name)?,
     }

@@ -4,7 +4,7 @@ const BASH_FUNCTION: &str = r#"wt() {
   local output
   output=$(command wt "$@")
   local exit_code=$?
-  if [[ $exit_code -eq 0 && "$1" == "switch" ]]; then
+  if [[ $exit_code -eq 0 && ("$1" == "switch" || "$1" == "sw" || "$*" == *"--switch"* || " $* " == *" -s "* || "$*" == "-s" || "$*" == *" -s") ]]; then
     cd "$output"
   else
     echo "$output"
@@ -17,7 +17,7 @@ const ZSH_FUNCTION: &str = r#"wt() {
   local output
   output=$(command wt "$@")
   local exit_code=$?
-  if [[ $exit_code -eq 0 && "$1" == "switch" ]]; then
+  if [[ $exit_code -eq 0 && ("$1" == "switch" || "$1" == "sw" || "$*" == *"--switch"* || " $* " == *" -s "* || "$*" == "-s" || "$*" == *" -s") ]]; then
     cd "$output"
   else
     echo "$output"

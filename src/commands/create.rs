@@ -1,6 +1,6 @@
 use crate::git::{find_hub_root, run_git_in_dir};
 
-pub fn run(name: &str, branch: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
+pub fn run(name: &str, branch: Option<&str>, switch: bool) -> Result<(), Box<dyn std::error::Error>> {
     let hub_root = find_hub_root()?;
     let worktree_path = hub_root.join(name);
 
@@ -11,9 +11,14 @@ pub fn run(name: &str, branch: Option<&str>) -> Result<(), Box<dyn std::error::E
 
     run_git_in_dir(&hub_root, &args)?;
 
-    println!("Created worktree '{}' at {}", name, worktree_path.display());
-    if let Some(b) = branch {
-        println!("Checked out branch: {}", b);
+    if switch {
+        // Print only the path for shell wrapper to cd into
+        println!("{}", worktree_path.display());
+    } else {
+        println!("Created worktree '{}' at {}", name, worktree_path.display());
+        if let Some(b) = branch {
+            println!("Checked out branch: {}", b);
+        }
     }
 
     Ok(())
