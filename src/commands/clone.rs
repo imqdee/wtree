@@ -190,4 +190,79 @@ mod tests {
             "my-repo"
         );
     }
+
+    #[test]
+    fn test_extract_repo_name_ssh_no_git_suffix() {
+        assert_eq!(
+            extract_repo_name("git@github.com:user/my-repo").unwrap(),
+            "my-repo"
+        );
+    }
+
+    #[test]
+    fn test_extract_repo_name_gitlab() {
+        assert_eq!(
+            extract_repo_name("https://gitlab.com/user/project.git").unwrap(),
+            "project"
+        );
+    }
+
+    #[test]
+    fn test_extract_repo_name_bitbucket() {
+        assert_eq!(
+            extract_repo_name("git@bitbucket.org:team/repository.git").unwrap(),
+            "repository"
+        );
+    }
+
+    #[test]
+    fn test_extract_repo_name_self_hosted() {
+        assert_eq!(
+            extract_repo_name("https://git.company.com/team/internal-tool.git").unwrap(),
+            "internal-tool"
+        );
+    }
+
+    #[test]
+    fn test_extract_repo_name_with_dashes_and_underscores() {
+        assert_eq!(
+            extract_repo_name("https://github.com/user/my_awesome-repo.git").unwrap(),
+            "my_awesome-repo"
+        );
+    }
+
+    #[test]
+    fn test_extract_repo_name_nested_path() {
+        assert_eq!(
+            extract_repo_name("https://gitlab.com/group/subgroup/project.git").unwrap(),
+            "project"
+        );
+    }
+
+    #[test]
+    fn test_extract_repo_name_multiple_trailing_slashes() {
+        assert_eq!(
+            extract_repo_name("https://github.com/user/repo///").unwrap(),
+            "repo"
+        );
+    }
+
+    #[test]
+    fn test_extract_repo_name_only_git_suffix() {
+        // URL ending with just ".git" should fail
+        let result = extract_repo_name("https://github.com/.git");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_extract_repo_name_empty_string() {
+        let result = extract_repo_name("");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_extract_repo_name_only_slashes() {
+        let result = extract_repo_name("///");
+        assert!(result.is_err());
+    }
 }

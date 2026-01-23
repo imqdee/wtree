@@ -120,9 +120,8 @@ pub struct Worktree {
     pub branch: Option<String>,
 }
 
-/// Get list of worktrees from git worktree list
-pub fn get_worktree_list(hub_root: &Path) -> Result<Vec<Worktree>, GitError> {
-    let output = run_git_in_dir(hub_root, &["worktree", "list", "--porcelain"])?;
+/// Parse git worktree list --porcelain output into structured data
+pub fn parse_worktree_list(output: &str) -> Vec<Worktree> {
     let mut worktrees = Vec::new();
     let mut current_path: Option<PathBuf> = None;
     let mut current_head: Option<String> = None;
@@ -159,5 +158,103 @@ pub fn get_worktree_list(hub_root: &Path) -> Result<Vec<Worktree>, GitError> {
         });
     }
 
-    Ok(worktrees)
+    worktrees
+}
+
+/// Get list of worktrees from git worktree list
+pub fn get_worktree_list(hub_root: &Path) -> Result<Vec<Worktree>, GitError> {
+    let output = run_git_in_dir(hub_root, &["worktree", "list", "--porcelain"])?;
+    Ok(parse_worktree_list(&output))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_worktree_list_empty() {
+        let output = "";
+        let result = parse_worktree_list(output);
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_parse_worktree_list_bare_only() {
+        let output = "worktree /home/user/project/.bare\nbare\n";
+        let result = parse_worktree_list(output);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].path, PathBuf::from("/home/user/project/.bare"));
+        assert_eq!(result[0].head, "(bare)");
+        assert!(result[0].branch.is_none());
+    }
+
+    #[test]
+    fn test_parse_worktree_list_single_worktree() {
+        let output = "worktree /home/user/project/main\nHEAD abc1234567890def\nbranch refs/heads/main\n";
+        let result = parse_worktree_list(output);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].path, PathBuf::from("/home/user/project/main"));
+        assert_eq!(result[0].head, "abc1234567890def");
+        assert_eq!(result[0].branch, Some("refs/heads/main".to_string()));
+    }
+
+    #[test]
+    fn test_parse_worktree_list_multiple_worktrees() {
+        let output = "\
+worktree /home/user/project/.bare
+bare
+
+worktree /home/user/project/main
+HEAD abc1234567890def
+branch refs/heads/main
+
+worktree /home/user/project/feature
+HEAD def4567890abc123
+branch refs/heads/feature-branch
+";
+        let result = parse_worktree_list(output);
+        assert_eq!(result.len(), 3);
+
+        assert_eq!(result[0].path, PathBuf::from("/home/user/project/.bare"));
+        assert_eq!(result[0].head, "(bare)");
+
+        assert_eq!(result[1].path, PathBuf::from("/home/user/project/main"));
+        assert_eq!(result[1].head, "abc1234567890def");
+        assert_eq!(result[1].branch, Some("refs/heads/main".to_string()));
+
+        assert_eq!(result[2].path, PathBuf::from("/home/user/project/feature"));
+        assert_eq!(result[2].head, "def4567890abc123");
+        assert_eq!(
+            result[2].branch,
+            Some("refs/heads/feature-branch".to_string())
+        );
+    }
+
+    #[test]
+    fn test_parse_worktree_list_detached_head() {
+        let output = "worktree /home/user/project/detached\nHEAD abc1234567890def\n";
+        let result = parse_worktree_list(output);
+        assert_eq!(result.len(), 1);
+        assert_eq!(
+            result[0].path,
+            PathBuf::from("/home/user/project/detached")
+        );
+        assert_eq!(result[0].head, "abc1234567890def");
+        assert!(result[0].branch.is_none());
+    }
+
+    #[test]
+    fn test_git_error_display() {
+        let error = GitError::new("test error message");
+        assert_eq!(format!("{}", error), "test error message");
+    }
+
+    #[test]
+    fn test_git_error_new() {
+        let error = GitError::new(String::from("owned string"));
+        assert_eq!(error.message, "owned string");
+
+        let error = GitError::new("static str");
+        assert_eq!(error.message, "static str");
+    }
 }
