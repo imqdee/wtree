@@ -24,11 +24,13 @@ enum Command {
         shell: String,
     },
     /// Switch to a worktree (prints path for shell wrapper to cd)
+    #[command(visible_alias = "sw")]
     Switch {
         /// Worktree name
         name: String,
     },
     /// Create a new worktree
+    #[command(visible_alias = "c")]
     Create {
         /// Worktree name
         name: String,
@@ -37,8 +39,10 @@ enum Command {
         branch: Option<String>,
     },
     /// List all worktrees
+    #[command(visible_alias = "ls")]
     List,
     /// Remove a worktree
+    #[command(visible_alias = "rm")]
     Remove {
         /// Worktree name
         name: String,
