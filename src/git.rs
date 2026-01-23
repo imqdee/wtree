@@ -22,21 +22,6 @@ impl GitError {
     }
 }
 
-/// Execute a git command and return its output
-pub fn run_git(args: &[&str]) -> Result<String, GitError> {
-    let output = Command::new("git")
-        .args(args)
-        .output()
-        .map_err(|e| GitError::new(format!("Failed to execute git: {}", e)))?;
-
-    if output.status.success() {
-        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
-    } else {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        Err(GitError::new(stderr))
-    }
-}
-
 /// Execute a git command in a specific directory
 pub fn run_git_in_dir(dir: &Path, args: &[&str]) -> Result<String, GitError> {
     let output = Command::new("git")
@@ -56,8 +41,8 @@ pub fn run_git_in_dir(dir: &Path, args: &[&str]) -> Result<String, GitError> {
 /// Find the hub root (bare repo root) from the current directory.
 /// Works whether we're in a worktree or in the hub itself.
 pub fn find_hub_root() -> Result<PathBuf, GitError> {
-    let current_dir =
-        std::env::current_dir().map_err(|e| GitError::new(format!("Cannot get current dir: {}", e)))?;
+    let current_dir = std::env::current_dir()
+        .map_err(|e| GitError::new(format!("Cannot get current dir: {}", e)))?;
 
     // Walk up the directory tree looking for .bare directory or .git file
     let mut dir = current_dir.as_path();
@@ -85,7 +70,9 @@ pub fn find_hub_root() -> Result<PathBuf, GitError> {
 
                 // The gitdir should point to .bare, so hub root is its parent
                 if let Some(hub_root) = gitdir_path.parent() {
-                    let hub_root = hub_root.canonicalize().unwrap_or_else(|_| hub_root.to_path_buf());
+                    let hub_root = hub_root
+                        .canonicalize()
+                        .unwrap_or_else(|_| hub_root.to_path_buf());
                     if hub_root.join(".bare").exists() {
                         return Ok(hub_root);
                     }
@@ -103,13 +90,6 @@ pub fn find_hub_root() -> Result<PathBuf, GitError> {
     Err(GitError::new(
         "Not inside a wtree repository (cannot find .bare directory)",
     ))
-}
-
-/// Check if we're inside a worktree (as opposed to the hub root)
-pub fn is_inside_worktree() -> bool {
-    run_git(&["rev-parse", "--is-inside-work-tree"])
-        .map(|s| s == "true")
-        .unwrap_or(false)
 }
 
 /// Worktree information
@@ -190,7 +170,8 @@ mod tests {
 
     #[test]
     fn test_parse_worktree_list_single_worktree() {
-        let output = "worktree /home/user/project/main\nHEAD abc1234567890def\nbranch refs/heads/main\n";
+        let output =
+            "worktree /home/user/project/main\nHEAD abc1234567890def\nbranch refs/heads/main\n";
         let result = parse_worktree_list(output);
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].path, PathBuf::from("/home/user/project/main"));
@@ -235,10 +216,7 @@ branch refs/heads/feature-branch
         let output = "worktree /home/user/project/detached\nHEAD abc1234567890def\n";
         let result = parse_worktree_list(output);
         assert_eq!(result.len(), 1);
-        assert_eq!(
-            result[0].path,
-            PathBuf::from("/home/user/project/detached")
-        );
+        assert_eq!(result[0].path, PathBuf::from("/home/user/project/detached"));
         assert_eq!(result[0].head, "abc1234567890def");
         assert!(result[0].branch.is_none());
     }

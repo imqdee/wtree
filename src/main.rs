@@ -65,9 +65,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Command::Clone { url, switch } => commands::clone::run(&url, switch)?,
         Command::Init { shell } => commands::init::run(&shell)?,
         Command::Switch { name, envs } => commands::switch::run(&name, envs)?,
-        Command::Create { name, branch, switch } => {
-            commands::create::run(&name, branch.as_deref(), switch)?
-        }
+        Command::Create {
+            name,
+            branch,
+            switch,
+        } => commands::create::run(&name, branch.as_deref(), switch)?,
         Command::List => commands::list::run()?,
         Command::Remove { name } => commands::remove::run(&name)?,
     }

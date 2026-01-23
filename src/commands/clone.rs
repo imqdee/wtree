@@ -75,8 +75,16 @@ pub fn run(url: &str, switch: bool) -> Result<(), Box<dyn std::error::Error>> {
     let bare_path = repo_dir.join(".bare");
     let status = Command::new("git")
         .args(["clone", "--bare", url, bare_path.to_str().unwrap()])
-        .stdout(if switch { Stdio::null() } else { Stdio::inherit() })
-        .stderr(if switch { Stdio::null() } else { Stdio::inherit() })
+        .stdout(if switch {
+            Stdio::null()
+        } else {
+            Stdio::inherit()
+        })
+        .stderr(if switch {
+            Stdio::null()
+        } else {
+            Stdio::inherit()
+        })
         .status()?;
 
     if !status.success() {
@@ -110,8 +118,16 @@ pub fn run(url: &str, switch: bool) -> Result<(), Box<dyn std::error::Error>> {
         let worktree_status = Command::new("git")
             .current_dir(&repo_dir)
             .args(["worktree", "add", &default_branch, &default_branch])
-            .stdout(if switch { Stdio::null() } else { Stdio::inherit() })
-            .stderr(if switch { Stdio::null() } else { Stdio::inherit() })
+            .stdout(if switch {
+                Stdio::null()
+            } else {
+                Stdio::inherit()
+            })
+            .stderr(if switch {
+                Stdio::null()
+            } else {
+                Stdio::inherit()
+            })
             .status()?;
 
         if worktree_status.success() {
@@ -126,30 +142,26 @@ pub fn run(url: &str, switch: bool) -> Result<(), Box<dyn std::error::Error>> {
                 );
                 println!("Use 'cd {}/{}' to start working", repo_name, default_branch);
             }
-        } else {
-            if switch {
-                // Fallback to repo root if worktree creation failed
-                println!("{}", repo_dir.display());
-            } else {
-                println!("Created bare repository at {}/", repo_name);
-                eprintln!("Warning: Failed to create default branch worktree");
-                println!(
-                    "Use 'cd {}' then 'wt create <name>' to create a worktree",
-                    repo_name
-                );
-            }
-        }
-    } else {
-        if switch {
-            // No default branch detected, switch to repo root
+        } else if switch {
+            // Fallback to repo root if worktree creation failed
             println!("{}", repo_dir.display());
         } else {
             println!("Created bare repository at {}/", repo_name);
+            eprintln!("Warning: Failed to create default branch worktree");
             println!(
                 "Use 'cd {}' then 'wt create <name>' to create a worktree",
                 repo_name
             );
         }
+    } else if switch {
+        // No default branch detected, switch to repo root
+        println!("{}", repo_dir.display());
+    } else {
+        println!("Created bare repository at {}/", repo_name);
+        println!(
+            "Use 'cd {}' then 'wt create <name>' to create a worktree",
+            repo_name
+        );
     }
 
     Ok(())
