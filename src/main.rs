@@ -50,11 +50,11 @@ enum Command {
     /// List all worktrees
     #[command(visible_alias = "ls")]
     List,
-    /// Remove a worktree
+    /// Remove worktrees
     #[command(visible_alias = "rm")]
     Remove {
-        /// Worktree name
-        name: String,
+        /// Worktree names to remove
+        names: Vec<String>,
     },
 }
 
@@ -71,7 +71,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             switch,
         } => commands::create::run(&name, branch.as_deref(), switch)?,
         Command::List => commands::list::run()?,
-        Command::Remove { name } => commands::remove::run(&name)?,
+        Command::Remove { names } => commands::remove::run(&names)?,
     }
 
     Ok(())

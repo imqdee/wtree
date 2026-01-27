@@ -43,7 +43,7 @@ This wraps the `wt` command so that `switch` (and the `-s` flag) automatically c
 | `wt create <name> [-b branch] [-s]` | Create new worktree (alias: `c`)                |
 | `wt switch <name> [-e]`             | Switch to worktree (alias: `sw`)                |
 | `wt list`                           | List all worktrees (alias: `ls`)                |
-| `wt remove <name>`                  | Remove a worktree (alias: `rm`)                 |
+| `wt remove <name>...`               | Remove one or more worktrees (alias: `rm`)      |
 
 ### Examples
 
@@ -63,7 +63,8 @@ wt sw feature-auth -e               # switch and copy .env files from origin to 
 
 # List and remove
 wt ls
-wt rm feature-auth
+wt rm feature-auth                  # remove single worktree
+wt rm feature-one feature-two       # remove multiple worktrees
 ```
 
 ### Flags
