@@ -1,5 +1,6 @@
 mod commands;
 mod git;
+mod state;
 
 use clap::{Parser, Subcommand};
 

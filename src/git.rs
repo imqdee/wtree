@@ -147,6 +147,40 @@ pub fn get_worktree_list(hub_root: &Path) -> Result<Vec<Worktree>, GitError> {
     Ok(parse_worktree_list(&output))
 }
 
+/// Get the name of the current worktree based on the current directory
+/// Returns None if not currently in a worktree (e.g., in the hub root)
+pub fn get_current_worktree_name(hub_root: &Path) -> Result<Option<String>, GitError> {
+    let current_dir = std::env::current_dir()
+        .map_err(|e| GitError::new(format!("Cannot get current dir: {}", e)))?;
+
+    let current_dir = current_dir
+        .canonicalize()
+        .unwrap_or_else(|_| current_dir.clone());
+
+    let worktrees = get_worktree_list(hub_root)?;
+
+    for wt in worktrees {
+        // Skip the bare repo entry
+        if wt.head == "(bare)" {
+            continue;
+        }
+
+        let wt_path = wt
+            .path
+            .canonicalize()
+            .unwrap_or_else(|_| wt.path.clone());
+
+        // Check if current dir is the worktree or inside it
+        if current_dir.starts_with(&wt_path) {
+            if let Some(name) = wt.path.file_name() {
+                return Ok(Some(name.to_string_lossy().to_string()));
+            }
+        }
+    }
+
+    Ok(None)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
