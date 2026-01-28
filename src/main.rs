@@ -28,7 +28,7 @@ enum Command {
         /// Shell type (bash or zsh)
         shell: String,
     },
-    /// Switch to a worktree (prints path for shell wrapper to cd)
+    /// Switch to a worktree
     #[command(visible_alias = "sw")]
     Switch {
         /// Worktree name
