@@ -2,6 +2,12 @@
 name = "wtree"
 version = "0.2.0"
 edition = "2021"
+description = "A git worktree wrapper for bare repositories"
+license = "MIT"
+repository = "https://github.com/imqdee/wtree"
+homepage = "https://github.com/imqdee/wtree"
+keywords = ["git", "worktree", "bare", "repository"]
+categories = ["development-tools", "command-line-utilities"]
 
 [[bin]]
 name = "wt"
