@@ -41,7 +41,7 @@ This wraps the `wt` command so that `switch` (and the `-s` flag) automatically c
 | ----------------------------------- | ----------------------------------------------- |
 | `wt clone <url> [-s]`               | Clone repo as bare with default branch worktree |
 | `wt create <name> [-b branch] [-s]` | Create new worktree (alias: `c`)                |
-| `wt switch <name> [-e]`             | Switch to worktree (alias: `sw`)                |
+| `wt switch <name>`                  | Switch to worktree (alias: `sw`)                |
 | `wt list`                           | List all worktrees (alias: `ls`)                |
 | `wt remove <name>...`               | Remove one or more worktrees (alias: `rm`)      |
 
@@ -59,7 +59,7 @@ wt create feature-ui -s             # create and switch to the branch
 
 # Switch between worktrees
 wt switch main
-wt sw feature-auth -e               # switch and copy .env files from origin to destination
+wt sw feature-auth
 
 # List and remove
 wt ls
@@ -71,7 +71,6 @@ wt rm feature-one feature-two       # remove multiple worktrees
 
 - `-s, --switch`: After clone/create, switch to the new worktree
 - `-b, --branch <name>`: Base branch for new worktree (create only)
-- `-e, --envs`: Copy `.env*` files (except `.env.example`) when switching
 
 ## Hooks
 
