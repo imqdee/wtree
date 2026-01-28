@@ -1,4 +1,5 @@
 use crate::git::{find_hub_root, run_git_in_dir};
+use crate::hooks::{load_hooks, run_post_hooks, run_pre_hooks, HookContext};
 
 /// Format the error summary message for failed removals
 pub fn format_error_summary(error_count: usize) -> String {
@@ -12,11 +13,25 @@ pub fn format_error_line(name: &str, err: &str) -> String {
 
 pub fn run(names: &[String]) -> Result<(), Box<dyn std::error::Error>> {
     let hub_root = find_hub_root()?;
+    let hooks = load_hooks(&hub_root);
     let mut errors: Vec<(&str, String)> = Vec::new();
 
     for name in names {
+        let worktree_path = hub_root.join(name);
+        let context = HookContext::new("remove", name, &worktree_path, &hub_root, None);
+
+        // Run pre-hooks; if they fail, skip this worktree
+        if let Err(e) = run_pre_hooks(&hooks, &context) {
+            errors.push((name, e.to_string()));
+            continue;
+        }
+
         match run_git_in_dir(&hub_root, &["worktree", "remove", name]) {
-            Ok(_) => println!("Removed worktree '{}'", name),
+            Ok(_) => {
+                // Run post-hooks (from hub root, worktree is gone)
+                run_post_hooks(&hooks, &context);
+                println!("Removed worktree '{}'", name);
+            }
             Err(e) => errors.push((name, e.to_string())),
         }
     }

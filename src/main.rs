@@ -1,6 +1,7 @@
 mod commands;
 mod git;
 mod state;
+mod hooks;
 
 use clap::{Parser, Subcommand};
 

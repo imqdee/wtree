@@ -73,6 +73,45 @@ wt rm feature-one feature-two       # remove multiple worktrees
 - `-b, --branch <name>`: Base branch for new worktree (create only)
 - `-e, --envs`: Copy `.env*` files (except `.env.example`) when switching
 
+## Hooks
+
+Define pre/post commands for `create`, `switch`, and `remove` operations.
+
+### Configuration
+
+A template `.wtree/hooks.toml` is automatically created when you clone a repository with `wt clone`. Uncomment the hooks you want to enable:
+
+```toml
+[create]
+pre = ["echo 'Creating worktree...'"]
+post = ["cp ../.env .env", "npm install"]
+
+[switch]
+pre = []
+post = ["npm install"]
+
+[remove]
+pre = ["echo 'Cleaning up...'"]
+post = []
+```
+
+### Environment Variables
+
+Hooks receive context via environment variables:
+
+| Variable           | Description                        | Available in |
+| ------------------ | ---------------------------------- | ------------ |
+| `WT_COMMAND`       | Command name (create/switch/remove)| All hooks    |
+| `WT_WORKTREE_NAME` | Name of the target worktree        | All hooks    |
+| `WT_WORKTREE_PATH` | Absolute path to target worktree   | All hooks    |
+| `WT_HUB_ROOT`      | Path to hub root (parent of .bare) | All hooks    |
+| `WT_BRANCH`        | Branch name (if specified)         | create only  |
+
+### Behavior
+
+- **Pre-hooks** run from the hub root directory. If a pre-hook fails, the command is aborted.
+- **Post-hooks** run from the target worktree directory. If a post-hook fails, a warning is logged but the command completes.
+
 ## Development
 
 ```bash

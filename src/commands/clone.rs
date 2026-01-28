@@ -4,6 +4,44 @@ use std::process::{Command, Stdio};
 
 use crate::git::GitError;
 
+/// Template content for hooks.toml with commented examples
+const HOOKS_TEMPLATE: &str = r#"# wtree hooks configuration
+# Define pre/post commands for create, switch, and remove operations.
+#
+# Pre-hooks run before the command executes (from hub root).
+# If a pre-hook fails, the command is aborted.
+#
+# Post-hooks run after the command completes (from target worktree).
+# If a post-hook fails, a warning is logged but the command completes.
+#
+# Available environment variables in hooks:
+#   WT_COMMAND        - Command name (create/switch/remove)
+#   WT_WORKTREE_NAME  - Name of the target worktree
+#   WT_WORKTREE_PATH  - Absolute path to target worktree
+#   WT_HUB_ROOT       - Path to hub root (parent of .bare)
+#   WT_BRANCH         - Branch name (create only, if specified)
+
+[create]
+# pre = []
+# post = ["cp \"$WT_HUB_ROOT/main/.env\" \"$WT_WORKTREE_PATH/\"", "npm install"]
+
+[switch]
+# pre = []
+# post = []
+
+[remove]
+# pre = []
+# post = []
+"#;
+
+/// Create .wtree directory with template hooks.toml
+fn create_wtree_config(repo_dir: &Path) -> std::io::Result<()> {
+    let wtree_dir = repo_dir.join(".wtree");
+    fs::create_dir(&wtree_dir)?;
+    fs::write(wtree_dir.join("hooks.toml"), HOOKS_TEMPLATE)?;
+    Ok(())
+}
+
 /// Get the default branch name from a bare repository
 fn get_default_branch(repo_dir: &Path) -> Option<String> {
     // For bare clones, HEAD points to the default branch
@@ -96,6 +134,13 @@ pub fn run(url: &str, switch: bool) -> Result<(), Box<dyn std::error::Error>> {
     // Create .git file pointing to .bare
     let git_file = repo_dir.join(".git");
     fs::write(&git_file, "gitdir: ./.bare\n")?;
+
+    // Create .wtree directory with template hooks.toml
+    if let Err(e) = create_wtree_config(&repo_dir) {
+        if !switch {
+            eprintln!("Warning: Failed to create .wtree config: {}", e);
+        }
+    }
 
     // Configure the bare repo for proper fetch behavior
     // This ensures `git fetch` brings all branches properly

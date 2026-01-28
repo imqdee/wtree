@@ -1,6 +1,7 @@
 use std::fs;
 
 use crate::git::{find_hub_root, get_current_worktree_name, get_worktree_list, GitError};
+use crate::hooks::{load_hooks, run_post_hooks, run_pre_hooks, HookContext};
 use crate::state::{read_previous_worktree, save_previous_worktree};
 
 /// Check if a filename should be copied as an env file
@@ -30,6 +31,11 @@ pub fn run(name: &str, copy_envs: bool) -> Result<(), Box<dyn std::error::Error>
     for wt in &worktrees {
         if let Some(dir_name) = wt.path.file_name() {
             if dir_name.to_string_lossy() == target_name {
+                // Load and run pre-hooks
+                let hooks = load_hooks(&hub_root);
+                let context = HookContext::new("switch", &target_name, &wt.path, &hub_root, None);
+                run_pre_hooks(&hooks, &context)?;
+
                 // Copy .env* files if requested
                 if copy_envs {
                     let source = std::env::current_dir()?;
@@ -50,6 +56,9 @@ pub fn run(name: &str, copy_envs: bool) -> Result<(), Box<dyn std::error::Error>
                         save_previous_worktree(&hub_root, current)?;
                     }
                 }
+
+                // Run post-hooks (from target worktree)
+                run_post_hooks(&hooks, &context);
 
                 // Print path for shell wrapper to cd into
                 println!("{}", wt.path.display());
