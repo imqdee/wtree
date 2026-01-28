@@ -1,5 +1,6 @@
-use crate::git::{find_hub_root, run_git_in_dir};
+use crate::git::{find_hub_root, get_current_worktree_name, run_git_in_dir};
 use crate::hooks::{load_hooks, run_post_hooks, run_pre_hooks, HookContext};
+use crate::state::save_previous_worktree;
 
 pub fn run(
     name: &str,
@@ -8,6 +9,13 @@ pub fn run(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let hub_root = find_hub_root()?;
     let worktree_path = hub_root.join(name);
+
+    // Get current worktree name before creating (for saving state when switching)
+    let current_worktree = if switch {
+        get_current_worktree_name(&hub_root)?
+    } else {
+        None
+    };
 
     // Load and run pre-hooks
     let hooks = load_hooks(&hub_root);
@@ -25,6 +33,10 @@ pub fn run(
     run_post_hooks(&hooks, &context);
 
     if switch {
+        // Save current worktree as previous (if we were in a worktree)
+        if let Some(ref current) = current_worktree {
+            save_previous_worktree(&hub_root, current)?;
+        }
         // Print only the path for shell wrapper to cd into
         println!("{}", worktree_path.display());
     } else {
