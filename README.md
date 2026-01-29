@@ -119,6 +119,20 @@ cargo build --release # release build
 cargo test            # run tests
 ```
 
+### Git Hooks
+
+This project uses [lefthook](https://github.com/evilmartians/lefthook) for git hooks.
+
+```bash
+# Install lefthook (macOS)
+brew install lefthook
+
+# Install hooks
+lefthook install
+```
+
+Hooks run automatically on commit (fmt, clippy) and push (test, build).
+
 ## License
 
 MIT
