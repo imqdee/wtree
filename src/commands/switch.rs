@@ -7,9 +7,8 @@ pub fn run(name: &str) -> Result<(), Box<dyn std::error::Error>> {
 
     // Resolve "-" to the previous worktree name
     let target_name = if name == "-" {
-        read_previous_worktree(&hub_root)?.ok_or_else(|| {
-            GitError::new("No previous worktree. Use 'wt switch <name>' first.")
-        })?
+        read_previous_worktree(&hub_root)?
+            .ok_or_else(|| GitError::new("No previous worktree. Use 'wt switch <name>' first."))?
     } else {
         name.to_string()
     };
@@ -50,4 +49,3 @@ pub fn run(name: &str) -> Result<(), Box<dyn std::error::Error>> {
         target_name
     ))))
 }
-

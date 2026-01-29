@@ -97,10 +97,7 @@ pub fn get_command_hooks<'a>(config: &'a HooksConfig, command: &str) -> &'a Comm
 }
 
 /// Run pre-hooks for a command. Returns error if any hook fails.
-pub fn run_pre_hooks(
-    config: &Option<HooksConfig>,
-    context: &HookContext,
-) -> Result<(), HookError> {
+pub fn run_pre_hooks(config: &Option<HooksConfig>, context: &HookContext) -> Result<(), HookError> {
     let Some(config) = config else {
         return Ok(());
     };
@@ -150,7 +147,10 @@ fn run_single_hook(hook: &str, context: &HookContext, phase: Phase) -> Result<()
         .current_dir(working_dir)
         .env("WT_COMMAND", &context.command)
         .env("WT_WORKTREE_NAME", &context.worktree_name)
-        .env("WT_WORKTREE_PATH", context.worktree_path.to_string_lossy().as_ref())
+        .env(
+            "WT_WORKTREE_PATH",
+            context.worktree_path.to_string_lossy().as_ref(),
+        )
         .env("WT_HUB_ROOT", context.hub_root.to_string_lossy().as_ref())
         .envs(context.branch.as_ref().map(|b| ("WT_BRANCH", b.as_str())))
         .output()
@@ -283,13 +283,7 @@ pre = ["remove-pre"]
 
     #[test]
     fn test_run_hooks_success() {
-        let context = HookContext::new(
-            "create",
-            "test",
-            &env::temp_dir(),
-            &env::temp_dir(),
-            None,
-        );
+        let context = HookContext::new("create", "test", &env::temp_dir(), &env::temp_dir(), None);
 
         let hooks = vec!["true".to_string()];
         let result = run_hooks(&hooks, &context, Phase::Pre);
@@ -298,13 +292,7 @@ pre = ["remove-pre"]
 
     #[test]
     fn test_run_hooks_failure() {
-        let context = HookContext::new(
-            "create",
-            "test",
-            &env::temp_dir(),
-            &env::temp_dir(),
-            None,
-        );
+        let context = HookContext::new("create", "test", &env::temp_dir(), &env::temp_dir(), None);
 
         let hooks = vec!["false".to_string()];
         let result = run_hooks(&hooks, &context, Phase::Pre);
@@ -313,13 +301,7 @@ pre = ["remove-pre"]
 
     #[test]
     fn test_run_hooks_empty() {
-        let context = HookContext::new(
-            "create",
-            "test",
-            &env::temp_dir(),
-            &env::temp_dir(),
-            None,
-        );
+        let context = HookContext::new("create", "test", &env::temp_dir(), &env::temp_dir(), None);
 
         let hooks: Vec<String> = vec![];
         let result = run_hooks(&hooks, &context, Phase::Pre);
@@ -328,13 +310,7 @@ pre = ["remove-pre"]
 
     #[test]
     fn test_run_pre_hooks_no_config() {
-        let context = HookContext::new(
-            "create",
-            "test",
-            &env::temp_dir(),
-            &env::temp_dir(),
-            None,
-        );
+        let context = HookContext::new("create", "test", &env::temp_dir(), &env::temp_dir(), None);
 
         let result = run_pre_hooks(&None, &context);
         assert!(result.is_ok());

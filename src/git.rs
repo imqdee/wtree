@@ -165,10 +165,7 @@ pub fn get_current_worktree_name(hub_root: &Path) -> Result<Option<String>, GitE
             continue;
         }
 
-        let wt_path = wt
-            .path
-            .canonicalize()
-            .unwrap_or_else(|_| wt.path.clone());
+        let wt_path = wt.path.canonicalize().unwrap_or_else(|_| wt.path.clone());
 
         // Check if current dir is the worktree or inside it
         if current_dir.starts_with(&wt_path) {
