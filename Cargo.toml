@@ -1,6 +1,6 @@
 [package]
 name = "wtree"
-version = "0.3.1"
+version = "0.4.0"
 edition = "2021"
 description = "A git worktree wrapper for bare repositories"
 license = "MIT"
