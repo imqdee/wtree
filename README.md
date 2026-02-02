@@ -98,18 +98,49 @@ post = []
 
 Hooks receive context via environment variables:
 
-| Variable           | Description                        | Available in |
-| ------------------ | ---------------------------------- | ------------ |
-| `WT_COMMAND`       | Command name (create/switch/remove)| All hooks    |
-| `WT_WORKTREE_NAME` | Name of the target worktree        | All hooks    |
-| `WT_WORKTREE_PATH` | Absolute path to target worktree   | All hooks    |
-| `WT_HUB_ROOT`      | Path to hub root (parent of .bare) | All hooks    |
-| `WT_BRANCH`        | Branch name (if specified)         | create only  |
+| Variable           | Description                         | Available in |
+| ------------------ | ----------------------------------- | ------------ |
+| `WT_COMMAND`       | Command name (create/switch/remove) | All hooks    |
+| `WT_WORKTREE_NAME` | Name of the target worktree         | All hooks    |
+| `WT_WORKTREE_PATH` | Absolute path to target worktree    | All hooks    |
+| `WT_HUB_ROOT`      | Path to hub root (parent of .bare)  | All hooks    |
+| `WT_BRANCH`        | Branch name (if specified)          | create only  |
 
 ### Behavior
 
 - **Pre-hooks** run from the hub root directory. If a pre-hook fails, the command is aborted.
 - **Post-hooks** run from the target worktree directory. If a post-hook fails, a warning is logged but the command completes.
+
+### Global Default Hooks
+
+You can define a global default hooks configuration that will be used as the initial `.wtree/hooks.toml` for all new repositories cloned with `wt clone`.
+
+Create the file at `~/.wtree/default-hooks.toml`:
+
+```bash
+mkdir -p ~/.wtree
+cat > ~/.wtree/default-hooks.toml << 'EOF'
+[create]
+pre = []
+post = ["cp \"$WT_HUB_ROOT/main/.env\" \"$WT_WORKTREE_PATH/.env\""]
+
+[switch]
+pre = []
+post = []
+
+[remove]
+pre = []
+post = []
+EOF
+```
+
+When you run `wt clone`, the tool will:
+
+1. Check if `~/.wtree/default-hooks.toml` exists
+2. If it exists, copy its content as the new repository's `.wtree/hooks.toml`
+3. If it doesn't exist, use the built-in template with commented examples
+
+This is useful for teams or individuals who want consistent hook configurations across all their worktree-managed repositories.
 
 ## Development
 

@@ -34,11 +34,31 @@ const HOOKS_TEMPLATE: &str = r#"# wtree hooks configuration
 # post = []
 "#;
 
-/// Create .wtree directory with template hooks.toml
+/// Get the path to the global default hooks file (~/.wtree/default-hooks.toml)
+fn get_global_default_hooks_path() -> Option<std::path::PathBuf> {
+    std::env::var("HOME").ok().map(|home| {
+        std::path::PathBuf::from(home)
+            .join(".wtree")
+            .join("default-hooks.toml")
+    })
+}
+
+/// Read global default hooks configuration if it exists
+fn read_global_default_hooks() -> Option<String> {
+    let path = get_global_default_hooks_path()?;
+    std::fs::read_to_string(&path).ok()
+}
+
+/// Create .wtree directory with hooks.toml
+/// Uses global default from ~/.wtree/default-hooks.toml if it exists,
+/// otherwise uses the built-in template.
 fn create_wtree_config(repo_dir: &Path) -> std::io::Result<()> {
     let wtree_dir = repo_dir.join(".wtree");
     fs::create_dir(&wtree_dir)?;
-    fs::write(wtree_dir.join("hooks.toml"), HOOKS_TEMPLATE)?;
+
+    let hooks_content = read_global_default_hooks().unwrap_or_else(|| HOOKS_TEMPLATE.to_string());
+
+    fs::write(wtree_dir.join("hooks.toml"), hooks_content)?;
     Ok(())
 }
 
@@ -321,5 +341,23 @@ mod tests {
     fn test_extract_repo_name_only_slashes() {
         let result = extract_repo_name("///");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_get_global_default_hooks_path() {
+        std::env::set_var("HOME", "/home/testuser");
+        let path = get_global_default_hooks_path();
+        assert!(path.is_some());
+        assert_eq!(
+            path.unwrap().to_str().unwrap(),
+            "/home/testuser/.wtree/default-hooks.toml"
+        );
+    }
+
+    #[test]
+    fn test_read_global_default_hooks_missing() {
+        std::env::set_var("HOME", "/nonexistent/path");
+        let content = read_global_default_hooks();
+        assert!(content.is_none());
     }
 }
