@@ -1,8 +1,25 @@
 # wtree
 
-A CLI tool for managing git worktrees using a bare repository structure.
+A CLI tool for managing git worktrees with powerful workflow automation.
 
-Git worktrees let you work on multiple branches simultaneously in separate directories. No stashing, no context switching, and all worktrees share the same git objects.
+Git worktrees let you work on multiple branches simultaneously in separate directories. **wtree** wraps git worktree with a lifecycle hook system that automates your workflow—install dependencies, copy environment files, run setup scripts—all triggered automatically when you create, switch, or remove worktrees.
+
+## Why wtree?
+
+**Workflow Automation via Hooks**
+
+Most worktree tools stop at `git worktree add`. wtree goes further with a two-phase hook system that automates your entire development workflow:
+
+```toml
+# .wtree/hooks.toml
+[create]
+post = [
+  "cp \"$WT_HUB_ROOT/main/.env\" \"$WT_WORKTREE_PATH/.env\"",
+  "npm install"
+]
+```
+
+Every time you create a new worktree, your environment is automatically set up. Switch to an existing worktree? Dependencies are synced. No manual steps, no forgotten setup.
 
 ## Installation
 
@@ -10,15 +27,6 @@ Git worktrees let you work on multiple branches simultaneously in separate direc
 
 ```bash
 cargo install wtree
-```
-
-### From source
-
-```bash
-git clone https://github.com/imqdee/wtree.git
-cd wtree
-cargo build --release
-cp target/release/wt ~/.local/bin/  # or anywhere in your PATH
 ```
 
 ## Shell Setup
@@ -32,8 +40,6 @@ eval "$(wt init bash)"
 # Zsh
 eval "$(wt init zsh)"
 ```
-
-This wraps the `wt` command so that `switch` (and the `-s` flag) automatically changes your directory to the target worktree.
 
 ## Usage
 
@@ -74,48 +80,15 @@ wt rm feature-one feature-two       # remove multiple worktrees
 
 ## Hooks
 
-Define pre/post commands for `create`, `switch`, and `remove` operations.
+The hook system is wtree's core feature. Define shell commands that run automatically during worktree lifecycle events.
 
-### Configuration
+### Local Hooks
 
-A template `.wtree/hooks.toml` is automatically created when you clone a repository with `wt clone`. Uncomment the hooks you want to enable:
-
-```toml
-[create]
-pre = ["echo 'Creating worktree...'"]
-post = ["cp ../.env .env", "npm install"]
-
-[switch]
-pre = []
-post = ["npm install"]
-
-[remove]
-pre = ["echo 'Cleaning up...'"]
-post = []
-```
-
-### Environment Variables
-
-Hooks receive context via environment variables:
-
-| Variable           | Description                         | Available in |
-| ------------------ | ----------------------------------- | ------------ |
-| `WT_COMMAND`       | Command name (create/switch/remove) | All hooks    |
-| `WT_WORKTREE_NAME` | Name of the target worktree         | All hooks    |
-| `WT_WORKTREE_PATH` | Absolute path to target worktree    | All hooks    |
-| `WT_HUB_ROOT`      | Path to hub root (parent of .bare)  | All hooks    |
-| `WT_BRANCH`        | Branch name (if specified)          | create only  |
-
-### Behavior
-
-- **Pre-hooks** run from the hub root directory. If a pre-hook fails, the command is aborted.
-- **Post-hooks** run from the target worktree directory. If a post-hook fails, a warning is logged but the command completes.
+When you clone a repository with `wt clone`, a customisble template `.wtree/hooks.toml` is created:
 
 ### Global Default Hooks
 
-You can define a global default hooks configuration that will be used as the initial `.wtree/hooks.toml` for all new repositories cloned with `wt clone`.
-
-Create the file at `~/.wtree/default-hooks.toml`:
+Define default hooks that apply to all new repositories:
 
 ```bash
 mkdir -p ~/.wtree
@@ -140,7 +113,65 @@ When you run `wt clone`, the tool will:
 2. If it exists, copy its content as the new repository's `.wtree/hooks.toml`
 3. If it doesn't exist, use the built-in template with commented examples
 
-This is useful for teams or individuals who want consistent hook configurations across all their worktree-managed repositories.
+### Environment Variables
+
+Hooks receive full context via environment variables:
+
+| Variable           | Description                         | Available in |
+| ------------------ | ----------------------------------- | ------------ |
+| `WT_COMMAND`       | Command name (create/switch/remove) | All hooks    |
+| `WT_WORKTREE_NAME` | Name of the target worktree         | All hooks    |
+| `WT_WORKTREE_PATH` | Absolute path to target worktree    | All hooks    |
+| `WT_HUB_ROOT`      | Path to hub root (parent of .bare)  | All hooks    |
+| `WT_BRANCH`        | Branch name (if specified)          | create only  |
+
+### Execution Model
+
+| Phase      | Working Directory          | On Failure                        |
+| ---------- | -------------------------- | --------------------------------- |
+| Pre-hooks  | Hub root (parent of .bare) | Command aborted                   |
+| Post-hooks | Target worktree directory  | Warning logged, command completes |
+
+This design lets you:
+
+- Use **pre-hooks** as gates (validate branch names, check prerequisites)
+- Use **post-hooks** for setup (install deps, copy files) without blocking on failures
+
+### Real-World Examples
+
+**Node.js project with shared environment:**
+
+```toml
+[create]
+post = [
+  "cp \"$WT_HUB_ROOT/main/.env\" \"$WT_WORKTREE_PATH/.env\"",
+  "npm install"
+]
+
+[switch]
+post = ["npm install"]
+```
+
+**Python project with virtual environments:**
+
+```toml
+[create]
+post = [
+  "python -m venv .venv",
+  "source .venv/bin/activate && pip install -r requirements.txt"
+]
+
+[switch]
+post = ["source .venv/bin/activate"]
+```
+
+**Validate branch naming convention:**
+
+```toml
+[create]
+pre = ["[[ \"$WT_WORKTREE_NAME\" =~ ^(feature|fix|hotfix)- ]]"]
+post = []
+```
 
 ## Development
 
@@ -150,7 +181,16 @@ cargo build --release # release build
 cargo test            # run tests
 ```
 
-### Git Hooks
+### Install from source
+
+```bash
+git clone https://github.com/imqdee/wtree.git
+cd wtree
+cargo build --release
+cp target/release/wt ~/.local/bin/  # or anywhere in your PATH
+```
+
+### Development Git Hooks
 
 This project uses [lefthook](https://github.com/evilmartians/lefthook) for git hooks.
 
