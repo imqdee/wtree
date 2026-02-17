@@ -42,6 +42,9 @@ enum Command {
         /// Branch to checkout (uses current HEAD if not specified)
         #[arg(short = 'b', long)]
         branch: Option<String>,
+        /// Create new worktree branching from another worktree's current commit
+        #[arg(short = 'f', long, conflicts_with = "branch")]
+        from: Option<String>,
         /// Switch to the worktree after creating
         #[arg(short, long)]
         switch: bool,
@@ -67,8 +70,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Command::Create {
             name,
             branch,
+            from,
             switch,
-        } => commands::create::run(&name, branch.as_deref(), switch)?,
+        } => commands::create::run(&name, branch.as_deref(), from.as_deref(), switch)?,
         Command::List => commands::list::run()?,
         Command::Remove { names } => commands::remove::run(&names)?,
     }
