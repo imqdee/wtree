@@ -39,12 +39,12 @@ enum Command {
     Create {
         /// Worktree name
         name: String,
-        /// Branch to checkout (uses current HEAD if not specified)
-        #[arg(short = 'b', long)]
-        branch: Option<String>,
+        /// Check out an existing branch in the new worktree
+        #[arg(long)]
+        checkout: Option<String>,
         /// Create new worktree branching from another worktree's current commit
-        #[arg(short = 'f', long, conflicts_with = "branch")]
-        from: Option<String>,
+        #[arg(long, conflicts_with = "checkout")]
+        base: Option<String>,
         /// Switch to the worktree after creating
         #[arg(short, long)]
         switch: bool,
@@ -69,10 +69,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Command::Switch { name } => commands::switch::run(&name)?,
         Command::Create {
             name,
-            branch,
-            from,
+            checkout,
+            base,
             switch,
-        } => commands::create::run(&name, branch.as_deref(), from.as_deref(), switch)?,
+        } => commands::create::run(&name, checkout.as_deref(), base.as_deref(), switch)?,
         Command::List => commands::list::run()?,
         Command::Remove { names } => commands::remove::run(&names)?,
     }

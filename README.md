@@ -43,13 +43,13 @@ eval "$(wt init zsh)"
 
 ## Usage
 
-| Command                                           | Description                                     |
-| ------------------------------------------------- | ----------------------------------------------- |
-| `wt clone <url> [-s]`                             | Clone repo as bare with default branch worktree |
-| `wt create <name> [-b branch] [-f worktree] [-s]` | Create new worktree (alias: `c`)                |
-| `wt switch <name>`                                | Switch to worktree (alias: `sw`)                |
-| `wt list`                                         | List all worktrees (alias: `ls`)                |
-| `wt remove <name>...`                             | Remove one or more worktrees (alias: `rm`)      |
+| Command                                                       | Description                                     |
+| ------------------------------------------------------------- | ----------------------------------------------- |
+| `wt clone <url> [-switch]`                                    | Clone repo as bare with default branch worktree |
+| `wt create <name> [--checkout branch] [--base worktree] [-s]` | Create new worktree (alias: `c`)                |
+| `wt switch <name>`                                            | Switch to worktree (alias: `sw`)                |
+| `wt list`                                                     | List all worktrees (alias: `ls`)                |
+| `wt remove <name>...`                                         | Remove one or more worktrees (alias: `rm`)      |
 
 ### Examples
 
@@ -59,10 +59,10 @@ wt clone git@github.com:user/repo.git
 wt clone git@github.com:user/repo.git -s  # clone and switch to default branch
 
 # Create worktrees
-wt create feature-auth              # new worktree from bare repo HEAD
-wt create hotfix -b main            # check out existing branch 'main' in new worktree
-wt create feature-ui -s             # create and switch to the new worktree
-wt create fix-123 -f feature-auth   # branch off 'feature-auth' worktree's current commit
+wt create feature-auth                        # new worktree from bare repo HEAD
+wt create hotfix --checkout main              # check out existing branch 'main' in new worktree
+wt create feature-ui -s                       # create and switch to the new worktree
+wt create fix-123 --base feature-auth         # branch off 'feature-auth' worktree's current commit
 
 # Switch between worktrees
 wt switch main
@@ -77,12 +77,12 @@ wt rm feature-one feature-two       # remove multiple worktrees
 ### Flags
 
 - `-s, --switch`: After clone/create, switch to the new worktree
-- `-b, --branch <name>`: Check out an _existing_ branch in the new worktree. Fails if that
+- `--checkout <branch>`: Check out an _existing_ branch in the new worktree. Fails if that
   branch is already checked out in another worktree. Use this when the branch already exists
   in the repository but is not currently active.
-- `-f, --from <worktree>`: Create the new worktree as a _new branch_ starting at the given
+- `--base <worktree>`: Create the new worktree as a _new branch_ starting at the given
   worktree's current commit. Use this to branch off work-in-progress from another worktree,
-  even if its branch is already checked out. Cannot be combined with `-b`.
+  even if its branch is already checked out. Cannot be combined with `--checkout`.
 
 ## Hooks
 

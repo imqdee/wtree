@@ -4,8 +4,8 @@ use crate::state::save_previous_worktree;
 
 pub fn run(
     name: &str,
-    branch: Option<&str>,
-    from: Option<&str>,
+    checkout: Option<&str>,
+    base: Option<&str>,
     switch: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let hub_root = find_hub_root()?;
@@ -18,8 +18,8 @@ pub fn run(
         None
     };
 
-    // Resolve --from to the source worktree's HEAD SHA
-    let from_sha: Option<String> = if let Some(source) = from {
+    // Resolve --base to the source worktree's HEAD SHA
+    let base_sha: Option<String> = if let Some(source) = base {
         let worktrees = get_worktree_list(&hub_root)?;
         let found = worktrees.iter().find(|wt| {
             wt.path
@@ -37,11 +37,11 @@ pub fn run(
 
     // Load and run pre-hooks
     let hooks = load_hooks(&hub_root);
-    let ctx_branch = branch.or(from.map(|_| name));
+    let ctx_branch = checkout.or(base.map(|_| name));
     let context = HookContext::new("create", name, &worktree_path, &hub_root, ctx_branch);
     run_pre_hooks(&hooks, &context)?;
 
-    let args: Vec<&str> = match (branch, from_sha.as_deref()) {
+    let args: Vec<&str> = match (checkout, base_sha.as_deref()) {
         (Some(b), _) => vec!["worktree", "add", name, b],
         (_, Some(sha)) => vec!["worktree", "add", "-b", name, name, sha],
         (None, None) => vec!["worktree", "add", name],
@@ -61,9 +61,9 @@ pub fn run(
         println!("{}", worktree_path.display());
     } else {
         println!("Created worktree '{}' at {}", name, worktree_path.display());
-        if let Some(source) = from {
+        if let Some(source) = base {
             println!("Branched from worktree: {}", source);
-        } else if let Some(b) = branch {
+        } else if let Some(b) = checkout {
             println!("Checked out branch: {}", b);
         }
     }
