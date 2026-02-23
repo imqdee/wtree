@@ -50,6 +50,7 @@ eval "$(wt init zsh)"
 | `wt switch <name>`                                            | Switch to worktree (alias: `sw`)                |
 | `wt list`                                                     | List all worktrees (alias: `ls`)                |
 | `wt remove <name>...`                                         | Remove one or more worktrees (alias: `rm`)      |
+| `wt prune [-f]`                                               | Remove all worktrees except the default (alias: `p`) |
 
 ### Examples
 
@@ -72,6 +73,10 @@ wt sw feature-auth
 wt ls
 wt rm feature-auth                  # remove single worktree
 wt rm feature-one feature-two       # remove multiple worktrees
+
+# Prune all non-default worktrees
+wt prune                            # interactive confirmation
+wt prune -f                         # skip confirmation
 ```
 
 ### Flags
@@ -83,6 +88,7 @@ wt rm feature-one feature-two       # remove multiple worktrees
 - `--base <worktree>`: Create the new worktree as a _new branch_ starting at the given
   worktree's current commit. Use this to branch off work-in-progress from another worktree,
   even if its branch is already checked out. Cannot be combined with `--checkout`.
+- `-f, --force`: Skip the confirmation prompt when pruning worktrees
 
 ## Hooks
 

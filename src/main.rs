@@ -58,6 +58,13 @@ enum Command {
         /// Worktree names to remove
         names: Vec<String>,
     },
+    /// Remove all worktrees except the default one
+    #[command(visible_alias = "p")]
+    Prune {
+        /// Skip confirmation prompt
+        #[arg(short, long)]
+        force: bool,
+    },
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -75,6 +82,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         } => commands::create::run(&name, checkout.as_deref(), base.as_deref(), switch)?,
         Command::List => commands::list::run()?,
         Command::Remove { names } => commands::remove::run(&names)?,
+        Command::Prune { force } => commands::prune::run(force)?,
     }
 
     Ok(())

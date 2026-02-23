@@ -2,7 +2,7 @@ use std::fs;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
-use crate::git::GitError;
+use crate::git::{self, GitError};
 
 /// Template content for hooks.toml with commented examples
 const HOOKS_TEMPLATE: &str = r#"# wtree hooks configuration
@@ -64,26 +64,7 @@ fn create_wtree_config(repo_dir: &Path) -> std::io::Result<()> {
 
 /// Get the default branch name from a bare repository
 fn get_default_branch(repo_dir: &Path) -> Option<String> {
-    // For bare clones, HEAD points to the default branch
-    // e.g., "ref: refs/heads/main"
-    let output = Command::new("git")
-        .current_dir(repo_dir)
-        .args(["symbolic-ref", "HEAD"])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
-        .ok()?;
-
-    if output.status.success() {
-        let ref_path = String::from_utf8_lossy(&output.stdout);
-        // refs/heads/main -> main
-        return ref_path
-            .trim()
-            .strip_prefix("refs/heads/")
-            .map(|s| s.to_string());
-    }
-
-    None
+    git::get_default_branch(repo_dir)
 }
 
 /// Extract repository name from URL
