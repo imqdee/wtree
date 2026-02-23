@@ -24,6 +24,7 @@ enum Command {
         switch: bool,
     },
     /// Output shell integration script
+    #[command(hide = true)]
     Init {
         /// Shell type (bash or zsh)
         shell: String,
