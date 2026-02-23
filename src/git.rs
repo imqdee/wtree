@@ -147,6 +147,13 @@ pub fn get_worktree_list(hub_root: &Path) -> Result<Vec<Worktree>, GitError> {
     Ok(parse_worktree_list(&output))
 }
 
+/// Get the default branch name from a bare repository.
+/// Runs `git symbolic-ref HEAD` to resolve the default branch (e.g. "main").
+pub fn get_default_branch(hub_root: &Path) -> Option<String> {
+    let output = run_git_in_dir(hub_root, &["symbolic-ref", "HEAD"]).ok()?;
+    output.strip_prefix("refs/heads/").map(|s| s.to_string())
+}
+
 /// Get the name of the current worktree based on the current directory
 /// Returns None if not currently in a worktree (e.g., in the hub root)
 pub fn get_current_worktree_name(hub_root: &Path) -> Result<Option<String>, GitError> {
