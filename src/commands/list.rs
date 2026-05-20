@@ -1,4 +1,4 @@
-use crate::git::{find_hub_root, get_worktree_list};
+use crate::git::{detect_repo, get_worktree_list};
 
 /// Format branch information for display
 /// - If branch is present, strips "refs/heads/" prefix
@@ -13,15 +13,23 @@ pub fn format_branch_info(branch: Option<&str>, head: &str) -> String {
 }
 
 pub fn run() -> Result<(), Box<dyn std::error::Error>> {
-    let hub_root = find_hub_root()?;
-    let worktrees = get_worktree_list(&hub_root)?;
+    let ctx = detect_repo()?;
+    let worktrees = get_worktree_list(ctx.anchor_dir())?;
 
     if worktrees.is_empty() {
         println!("No worktrees found.");
         return Ok(());
     }
 
+    // Canonical main worktree path (standard mode) for the [main] marker.
+    let main_canon = ctx.main_worktree().and_then(|m| m.canonicalize().ok());
+
     for wt in worktrees {
+        // Skip the bare repo entry (it carries the "(bare)" head marker).
+        if wt.head == "(bare)" {
+            continue;
+        }
+
         let name = wt
             .path
             .file_name()
@@ -30,12 +38,17 @@ pub fn run() -> Result<(), Box<dyn std::error::Error>> {
 
         let branch_info = format_branch_info(wt.branch.as_deref(), &wt.head);
 
-        // Skip the bare repo entry (shown as .bare)
-        if name == ".bare" {
-            continue;
-        }
+        let is_main = main_canon
+            .as_deref()
+            .zip(wt.path.canonicalize().ok())
+            .map(|(m, p)| m == p)
+            .unwrap_or(false);
 
-        println!("{:<20} [{}]", name, branch_info);
+        if is_main {
+            println!("{:<20} [{}] (main)", name, branch_info);
+        } else {
+            println!("{:<20} [{}]", name, branch_info);
+        }
     }
 
     Ok(())

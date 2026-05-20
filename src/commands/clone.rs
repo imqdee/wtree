@@ -3,51 +3,7 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 
 use crate::git::{self, GitError};
-
-/// Template content for hooks.toml with commented examples
-const HOOKS_TEMPLATE: &str = r#"# wtree hooks configuration
-# Define pre/post commands for create, switch, and remove operations.
-#
-# Pre-hooks run before the command executes (from hub root).
-# If a pre-hook fails, the command is aborted.
-#
-# Post-hooks run after the command completes (from target worktree).
-# If a post-hook fails, a warning is logged but the command completes.
-#
-# Available environment variables in hooks:
-#   WT_COMMAND        - Command name (create/switch/remove)
-#   WT_WORKTREE_NAME  - Name of the target worktree
-#   WT_WORKTREE_PATH  - Absolute path to target worktree
-#   WT_HUB_ROOT       - Path to hub root (parent of .bare)
-#   WT_BRANCH         - Branch name (create only, if specified)
-
-[create]
-# pre = []
-# post = ["cp \"$WT_HUB_ROOT/main/.env\" \"$WT_WORKTREE_PATH/\"", "npm install"]
-
-[switch]
-# pre = []
-# post = []
-
-[remove]
-# pre = []
-# post = []
-"#;
-
-/// Get the path to the global default hooks file (~/.wtree/default-hooks.toml)
-fn get_global_default_hooks_path() -> Option<std::path::PathBuf> {
-    std::env::var("HOME").ok().map(|home| {
-        std::path::PathBuf::from(home)
-            .join(".wtree")
-            .join("default-hooks.toml")
-    })
-}
-
-/// Read global default hooks configuration if it exists
-fn read_global_default_hooks() -> Option<String> {
-    let path = get_global_default_hooks_path()?;
-    std::fs::read_to_string(&path).ok()
-}
+use crate::hooks_template::default_hooks_content;
 
 /// Create .wtree directory with hooks.toml
 /// Uses global default from ~/.wtree/default-hooks.toml if it exists,
@@ -56,9 +12,7 @@ fn create_wtree_config(repo_dir: &Path) -> std::io::Result<()> {
     let wtree_dir = repo_dir.join(".wtree");
     fs::create_dir(&wtree_dir)?;
 
-    let hooks_content = read_global_default_hooks().unwrap_or_else(|| HOOKS_TEMPLATE.to_string());
-
-    fs::write(wtree_dir.join("hooks.toml"), hooks_content)?;
+    fs::write(wtree_dir.join("hooks.toml"), default_hooks_content())?;
     Ok(())
 }
 
@@ -322,23 +276,5 @@ mod tests {
     fn test_extract_repo_name_only_slashes() {
         let result = extract_repo_name("///");
         assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_get_global_default_hooks_path() {
-        std::env::set_var("HOME", "/home/testuser");
-        let path = get_global_default_hooks_path();
-        assert!(path.is_some());
-        assert_eq!(
-            path.unwrap().to_str().unwrap(),
-            "/home/testuser/.wtree/default-hooks.toml"
-        );
-    }
-
-    #[test]
-    fn test_read_global_default_hooks_missing() {
-        std::env::set_var("HOME", "/nonexistent/path");
-        let content = read_global_default_hooks();
-        assert!(content.is_none());
     }
 }

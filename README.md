@@ -1,8 +1,10 @@
 # wtree
 
-A CLI tool for managing git worktrees with powerful workflow automation.
+A CLI tool for managing git worktrees with powerful workflow automation, on both bare-hub and standard repositories.
 
 Git worktrees let you work on multiple branches simultaneously in separate directories. **wtree** wraps git worktree with a lifecycle hook system that automates your workflow—install dependencies, copy environment files, run setup scripts—all triggered automatically when you create, switch, or remove worktrees.
+
+It works in two layouts (see [Layouts](#layouts)): the original bare-hub layout created by `wt clone`, and any standard cloned repository adopted with `wt init`.
 
 ## Why wtree?
 
@@ -35,10 +37,33 @@ Add to your `.bashrc` or `.zshrc`:
 
 ```bash
 # Bash
-eval "$(wt init bash)"
+eval "$(wt shell-init bash)"
 
 # Zsh
-eval "$(wt init zsh)"
+eval "$(wt shell-init zsh)"
+```
+
+> **Breaking change in v0.7.0**: the shell-integration command moved from `wt init <shell>` to `wt shell-init <shell>`. `wt init` (no shell argument) now adopts a standard repository (see [Layouts](#layouts)). Update your `.bashrc`/`.zshrc` accordingly. The emitted shell function is otherwise unchanged.
+
+## Layouts
+
+wtree detects your repository layout automatically and behaves identically across both.
+
+**Bare-hub layout.** Created by `wt clone <url>`, which clones into `<repo>/.bare` and places each worktree as a sibling directory (`<repo>/<name>`). State and hooks live in `<repo>/.wtree/`. This is the original layout and is unchanged.
+
+**Standard layout.** Any ordinary cloned repository. Adopt it with `wt init` from inside the repo. Worktrees are created under `.claude/worktrees/<name>/` by default, state and hooks live in `.git/wtree/`, and the worktree directory is added to `.gitignore` automatically. `wt create` also lazily initializes a never-adopted standard repo on first use, so `wt init` is optional.
+
+```bash
+cd my-cloned-repo
+wt init              # adopt this repo (state dir, hooks template, gitignore entry)
+wt create feature-x  # creates .claude/worktrees/feature-x/
+```
+
+Override where standard-layout worktrees are created with a `worktree_base` entry in `.git/wtree/config.toml` (relative paths resolve against the repo root, absolute paths are used as-is):
+
+```toml
+# .git/wtree/config.toml
+worktree_base = "../my-worktrees"
 ```
 
 ## Usage
@@ -46,6 +71,7 @@ eval "$(wt init zsh)"
 | Command                                                       | Description                                     |
 | ------------------------------------------------------------- | ----------------------------------------------- |
 | `wt clone <url> [-switch]`                                    | Clone repo as bare with default branch worktree |
+| `wt init`                                                     | Adopt the current standard repo for wtree       |
 | `wt create <name> [--checkout branch] [--base worktree] [-s]` | Create new worktree (alias: `c`)                |
 | `wt switch <name>`                                            | Switch to worktree (alias: `sw`)                |
 | `wt list`                                                     | List all worktrees (alias: `ls`)                |
@@ -134,15 +160,17 @@ Hooks receive full context via environment variables:
 | `WT_COMMAND`       | Command name (create/switch/remove) | All hooks    |
 | `WT_WORKTREE_NAME` | Name of the target worktree         | All hooks    |
 | `WT_WORKTREE_PATH` | Absolute path to target worktree    | All hooks    |
-| `WT_HUB_ROOT`      | Path to hub root (parent of .bare)  | All hooks    |
+| `WT_HUB_ROOT`      | Repo root: hub root (parent of `.bare`) in bare layout, main worktree in standard layout | All hooks |
 | `WT_BRANCH`        | Branch name (if specified)          | create only  |
+
+In the standard layout `WT_HUB_ROOT` is the main worktree path rather than the parent of `.bare`; the variable keeps its name for backward compatibility, but its meaning is the repo root in the active layout.
 
 ### Execution Model
 
-| Phase      | Working Directory          | On Failure                        |
-| ---------- | -------------------------- | --------------------------------- |
-| Pre-hooks  | Hub root (parent of .bare) | Command aborted                   |
-| Post-hooks | Target worktree directory  | Warning logged, command completes |
+| Phase      | Working Directory                       | On Failure                        |
+| ---------- | --------------------------------------- | --------------------------------- |
+| Pre-hooks  | Repo root (hub root / main worktree)    | Command aborted                   |
+| Post-hooks | Target worktree directory               | Warning logged, command completes |
 
 This design lets you:
 

@@ -2,7 +2,7 @@
 name = "wtree"
 version = "0.6.0"
 edition = "2021"
-description = "A git worktree wrapper for bare repositories"
+description = "A git worktree wrapper for bare and standard repositories"
 license = "MIT"
 repository = "https://github.com/imqdee/wtree"
 homepage = "https://github.com/imqdee/wtree"

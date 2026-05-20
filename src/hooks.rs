@@ -2,6 +2,8 @@ use serde::Deserialize;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use crate::git::RepoContext;
+
 /// Hook phase - determines error handling behavior
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Phase {
@@ -79,9 +81,12 @@ impl HookError {
     }
 }
 
-/// Load hooks configuration from .wtree/hooks.toml
-pub fn load_hooks(hub_root: &Path) -> Option<HooksConfig> {
-    let hooks_path = hub_root.join(".wtree").join("hooks.toml");
+/// Load hooks configuration from the layout's state dir (`hooks.toml`).
+/// Bare: `<hub_root>/.wtree/hooks.toml`. Standard: `<common_dir>/wtree/hooks.toml`.
+/// Returns `None` when the file is absent (hooks are opt-in), so lazy-init
+/// standard repos that never ran `wt init` simply run no hooks.
+pub fn load_hooks(ctx: &RepoContext) -> Option<HooksConfig> {
+    let hooks_path = ctx.state_dir().join("hooks.toml");
     let content = std::fs::read_to_string(&hooks_path).ok()?;
     toml::from_str(&content).ok()
 }
@@ -324,7 +329,12 @@ pre = ["remove-pre"]
 
     #[test]
     fn test_load_hooks_missing_file() {
-        let result = load_hooks(Path::new("/nonexistent/path"));
+        let ctx = RepoContext {
+            layout: crate::git::Layout::Bare {
+                hub_root: PathBuf::from("/nonexistent/path"),
+            },
+        };
+        let result = load_hooks(&ctx);
         assert!(result.is_none());
     }
 }

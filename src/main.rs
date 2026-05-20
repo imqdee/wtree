@@ -1,13 +1,16 @@
 mod commands;
+mod config;
 mod git;
+mod gitignore;
 mod hooks;
+mod hooks_template;
 mod state;
 
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(name = "wt")]
-#[command(about = "A git worktree wrapper for bare repositories")]
+#[command(about = "A git worktree wrapper for bare and standard repositories")]
 struct Cli {
     #[command(subcommand)]
     command: Command,
@@ -23,9 +26,11 @@ enum Command {
         #[arg(short, long)]
         switch: bool,
     },
+    /// Adopt the current standard repository for wtree (state dir, hooks, gitignore)
+    Init,
     /// Output shell integration script
     #[command(hide = true)]
-    Init {
+    ShellInit {
         /// Shell type (bash or zsh)
         shell: String,
     },
@@ -73,7 +78,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match cli.command {
         Command::Clone { url, switch } => commands::clone::run(&url, switch)?,
-        Command::Init { shell } => commands::init::run(&shell)?,
+        Command::Init => commands::init::run()?,
+        Command::ShellInit { shell } => commands::shell_init::run(&shell)?,
         Command::Switch { name } => commands::switch::run(&name)?,
         Command::Create {
             name,

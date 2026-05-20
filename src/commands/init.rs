@@ -1,100 +1,46 @@
-use crate::git::GitError;
+use crate::git::{detect_repo, GitError, Layout};
+use crate::gitignore::ensure_gitignore_entry;
+use crate::hooks_template::default_hooks_content;
 
-const BASH_FUNCTION: &str = r#"wt() {
-  local output
-  output=$(command wt "$@")
-  local exit_code=$?
-  if [[ $exit_code -eq 0 && ("$1" == "switch" || "$1" == "sw" || "$*" == *"--switch"* || " $* " == *" -s "* || "$*" == "-s" || "$*" == *" -s") ]]; then
-    cd "$output"
-  else
-    echo "$output"
-    return $exit_code
-  fi
-}
-"#;
+/// Adopt the current standard repository: create the state dir, drop a hooks
+/// template, and ensure `worktree_base` is gitignored. Idempotent.
+pub fn run() -> Result<(), Box<dyn std::error::Error>> {
+    let ctx = detect_repo()?;
 
-const ZSH_FUNCTION: &str = r#"wt() {
-  local output
-  output=$(command wt "$@")
-  local exit_code=$?
-  if [[ $exit_code -eq 0 && ("$1" == "switch" || "$1" == "sw" || "$*" == *"--switch"* || " $* " == *" -s "* || "$*" == "-s" || "$*" == *" -s") ]]; then
-    cd "$output"
-  else
-    echo "$output"
-    return $exit_code
-  fi
-}
-"#;
-
-/// Get the shell function for a given shell type
-pub fn get_shell_function(shell: &str) -> Result<&'static str, GitError> {
-    match shell.to_lowercase().as_str() {
-        "bash" => Ok(BASH_FUNCTION),
-        "zsh" => Ok(ZSH_FUNCTION),
-        _ => Err(GitError::new(format!(
-            "Unsupported shell: {}. Supported shells: bash, zsh",
-            shell
-        ))),
-    }
-}
-
-pub fn run(shell: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let function = get_shell_function(shell)?;
-    print!("{}", function);
-    Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_get_shell_function_bash() {
-        let result = get_shell_function("bash");
-        assert!(result.is_ok());
-        assert!(result.unwrap().contains("wt()"));
-    }
-
-    #[test]
-    fn test_get_shell_function_zsh() {
-        let result = get_shell_function("zsh");
-        assert!(result.is_ok());
-        assert!(result.unwrap().contains("wt()"));
-    }
-
-    #[test]
-    fn test_get_shell_function_case_insensitive() {
-        assert!(get_shell_function("BASH").is_ok());
-        assert!(get_shell_function("Bash").is_ok());
-        assert!(get_shell_function("ZSH").is_ok());
-        assert!(get_shell_function("Zsh").is_ok());
-    }
-
-    #[test]
-    fn test_get_shell_function_unsupported() {
-        let result = get_shell_function("fish");
-        assert!(result.is_err());
-        assert!(result.unwrap_err().message.contains("Unsupported shell"));
-    }
-
-    #[test]
-    fn test_get_shell_function_empty() {
-        let result = get_shell_function("");
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_shell_function_contains_switch_detection() {
-        let bash = get_shell_function("bash").unwrap();
-        let zsh = get_shell_function("zsh").unwrap();
-
-        // Both should detect switch command and its alias
-        for func in [bash, zsh] {
-            assert!(func.contains("switch"));
-            assert!(func.contains("sw"));
-            assert!(func.contains("--switch"));
-            assert!(func.contains("-s"));
-            assert!(func.contains("cd \"$output\""));
+    let main_worktree = match &ctx.layout {
+        Layout::Standard { main_worktree, .. } => main_worktree.clone(),
+        Layout::Bare { .. } => {
+            return Err(Box::new(GitError::new(
+                "Already a wtree-managed bare repo. 'wt init' adopts a standard repo; use 'wt clone' to create a bare hub.",
+            )));
         }
+    };
+
+    let state_dir = ctx.state_dir();
+    std::fs::create_dir_all(&state_dir)
+        .map_err(|e| GitError::new(format!("Failed to create state directory: {}", e)))?;
+
+    // Write the hooks template only if absent, so re-running stays idempotent and
+    // never clobbers a customized hooks.toml.
+    let hooks_path = state_dir.join("hooks.toml");
+    if !hooks_path.exists() {
+        std::fs::write(&hooks_path, default_hooks_content())
+            .map_err(|e| GitError::new(format!("Failed to write hooks.toml: {}", e)))?;
     }
+
+    ensure_gitignore_entry(&ctx)?;
+
+    let worktree_base = ctx.worktree_base();
+    println!("Initialized wtree for standard repo.");
+    println!("  main worktree: {}", main_worktree.display());
+    println!("  state dir:     {}", state_dir.display());
+    println!("  hooks:         {}", hooks_path.display());
+    println!("  worktrees in:  {}", worktree_base.display());
+    println!();
+    println!(
+        "Override placement with a `worktree_base` entry in {}.",
+        state_dir.join("config.toml").display()
+    );
+
+    Ok(())
 }

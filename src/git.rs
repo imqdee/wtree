@@ -38,25 +38,27 @@ pub fn run_git_in_dir(dir: &Path, args: &[&str]) -> Result<String, GitError> {
     }
 }
 
-/// Find the hub root (bare repo root) from the current directory.
-/// Works whether we're in a worktree or in the hub itself.
-pub fn find_hub_root() -> Result<PathBuf, GitError> {
-    let current_dir = std::env::current_dir()
-        .map_err(|e| GitError::new(format!("Cannot get current dir: {}", e)))?;
-
-    // Walk up the directory tree looking for .bare directory or .git file
-    let mut dir = current_dir.as_path();
+/// Walk up from `start` looking for the bare-hub layout (`.bare` dir, or a `.git`
+/// file pointing at `./.bare`). Returns the hub root if found, `None` otherwise.
+///
+/// This is the canonical bare-layout probe used by `detect_repo`. It performs no
+/// `git` invocation, so bare detection never depends on
+/// `git rev-parse --show-toplevel` (which can fail in a bare hub that has no
+/// normal checked-out toplevel).
+fn find_bare_hub_root(start: &Path) -> Result<Option<PathBuf>, GitError> {
+    let mut dir = start;
     loop {
         // Check if this directory contains .bare (hub root)
         let bare_path = dir.join(".bare");
         if bare_path.exists() && bare_path.is_dir() {
-            return Ok(dir.to_path_buf());
+            return Ok(Some(dir.to_path_buf()));
         }
 
-        // Check if there's a .git file (not directory) pointing to .bare
+        // Check if there's a .git file (not directory) pointing to .bare. A
+        // `.git` file that exists but cannot be read is a hard error, matching
+        // the original `find_hub_root` (no silent fall-through to git detection).
         let git_path = dir.join(".git");
         if git_path.exists() && git_path.is_file() {
-            // Read the .git file to find the bare repo
             let content = std::fs::read_to_string(&git_path)
                 .map_err(|e| GitError::new(format!("Cannot read .git file: {}", e)))?;
 
@@ -74,7 +76,7 @@ pub fn find_hub_root() -> Result<PathBuf, GitError> {
                         .canonicalize()
                         .unwrap_or_else(|_| hub_root.to_path_buf());
                     if hub_root.join(".bare").exists() {
-                        return Ok(hub_root);
+                        return Ok(Some(hub_root));
                     }
                 }
             }
@@ -83,13 +85,169 @@ pub fn find_hub_root() -> Result<PathBuf, GitError> {
         // Move up one directory
         match dir.parent() {
             Some(parent) => dir = parent,
-            None => break,
+            None => return Ok(None),
+        }
+    }
+}
+
+/// Default subdirectory (relative to the main worktree) where standard-layout
+/// worktrees are created when no `worktree_base` override is configured.
+pub const DEFAULT_STANDARD_WORKTREE_SUBDIR: &str = ".claude/worktrees";
+
+/// Repository layout. Determines where state, hooks, and worktrees live.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Layout {
+    /// The original `<hub_root>/.bare` + sibling-worktrees layout.
+    Bare { hub_root: PathBuf },
+    /// A standard cloned repo. `main_worktree` is the primary checkout (never a
+    /// linked worktree), `common_dir` is the shared `.git` directory.
+    Standard {
+        main_worktree: PathBuf,
+        common_dir: PathBuf,
+    },
+}
+
+/// Detected repository context. Every command routes path resolution through
+/// this so bare and standard layouts share one code path. All paths held here
+/// are absolute, canonicalized at detection time.
+#[derive(Debug, Clone)]
+pub struct RepoContext {
+    pub layout: Layout,
+}
+
+impl RepoContext {
+    /// Directory git commands run from (hub root for bare, main worktree for
+    /// standard). Also the value exported to hooks as `WT_HUB_ROOT`.
+    pub fn anchor_dir(&self) -> &Path {
+        match &self.layout {
+            Layout::Bare { hub_root } => hub_root,
+            Layout::Standard { main_worktree, .. } => main_worktree,
         }
     }
 
+    /// Directory holding `state` and `hooks.toml`.
+    /// Bare: `<hub_root>/.wtree`. Standard: `<common_dir>/wtree` (i.e. `.git/wtree`).
+    pub fn state_dir(&self) -> PathBuf {
+        match &self.layout {
+            Layout::Bare { hub_root } => hub_root.join(".wtree"),
+            Layout::Standard { common_dir, .. } => common_dir.join("wtree"),
+        }
+    }
+
+    /// Parent directory under which named worktrees are created;
+    /// `worktree_base().join(name)` is the worktree path.
+    /// Bare: `<hub_root>`. Standard: `<main_worktree>/.claude/worktrees` by
+    /// default, or the `worktree_base` config override (relative resolves
+    /// against the main worktree, absolute used as-is).
+    pub fn worktree_base(&self) -> PathBuf {
+        match &self.layout {
+            Layout::Bare { hub_root } => hub_root.clone(),
+            Layout::Standard { main_worktree, .. } => {
+                match crate::config::load_config(self).worktree_base {
+                    Some(base) => {
+                        let pb = PathBuf::from(&base);
+                        if pb.is_absolute() {
+                            pb
+                        } else {
+                            main_worktree.join(pb)
+                        }
+                    }
+                    None => main_worktree.join(DEFAULT_STANDARD_WORKTREE_SUBDIR),
+                }
+            }
+        }
+    }
+
+    /// The main worktree path in standard mode, `None` in bare mode.
+    pub fn main_worktree(&self) -> Option<&Path> {
+        match &self.layout {
+            Layout::Standard { main_worktree, .. } => Some(main_worktree),
+            Layout::Bare { .. } => None,
+        }
+    }
+
+    pub fn is_standard(&self) -> bool {
+        matches!(self.layout, Layout::Standard { .. })
+    }
+}
+
+/// Resolve `p` to an absolute, canonical path. Relative paths resolve against
+/// `base`. Canonicalization falls back to the joined path when it fails (e.g.
+/// the path does not exist yet).
+fn absolutize(base: &Path, p: &str) -> PathBuf {
+    let pb = PathBuf::from(p);
+    let joined = if pb.is_absolute() { pb } else { base.join(pb) };
+    joined.canonicalize().unwrap_or(joined)
+}
+
+/// Read the first `worktree` entry of `git worktree list --porcelain`, which git
+/// always emits as the main (primary) worktree. Used to resolve the standard-mode
+/// main worktree, since `git rev-parse --show-toplevel` returns the *current*
+/// worktree (possibly a linked one), not the primary.
+fn first_worktree_path(dir: &Path) -> Result<PathBuf, GitError> {
+    let output = run_git_in_dir(dir, &["worktree", "list", "--porcelain"])?;
+    for line in output.lines() {
+        if let Some(p) = line.strip_prefix("worktree ") {
+            return Ok(absolutize(dir, p));
+        }
+    }
     Err(GitError::new(
-        "Not inside a wtree repository (cannot find .bare directory)",
+        "Cannot determine main worktree from 'git worktree list'",
     ))
+}
+
+/// Detect the repository layout from the current directory.
+pub fn detect_repo() -> Result<RepoContext, GitError> {
+    let current_dir = std::env::current_dir()
+        .map_err(|e| GitError::new(format!("Cannot get current dir: {}", e)))?;
+    detect_repo_from(&current_dir)
+}
+
+/// Core detection, parameterized on the starting directory for testability.
+///
+/// Order is bare-first: the `.bare` probe runs before any `git` call so the
+/// existing bare-hub layout is detected exactly as before, with no behavior
+/// change. Only a non-bare-hub directory falls through to `git rev-parse`.
+fn detect_repo_from(start: &Path) -> Result<RepoContext, GitError> {
+    // 1. Bare-hub layout (no git invocation in the common case).
+    if let Some(hub_root) = find_bare_hub_root(start)? {
+        return Ok(RepoContext {
+            layout: Layout::Bare { hub_root },
+        });
+    }
+
+    // 2. Ask git. A failure here means we are not inside a repo at all.
+    let common_dir_raw =
+        run_git_in_dir(start, &["rev-parse", "--git-common-dir"]).map_err(|_| {
+            GitError::new("Not inside a wtree repository (cannot find .bare directory)")
+        })?;
+    let common_dir = absolutize(start, &common_dir_raw);
+
+    let is_bare = run_git_in_dir(start, &["rev-parse", "--is-bare-repository"])
+        .map(|s| s == "true")
+        .unwrap_or(false);
+
+    if is_bare {
+        // A bare repo that does not use our `.bare` hub convention. Treat the
+        // parent of the git dir as the hub root.
+        let hub_root = common_dir
+            .parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| common_dir.clone());
+        return Ok(RepoContext {
+            layout: Layout::Bare { hub_root },
+        });
+    }
+
+    // 3. Standard repo. Resolve the primary worktree from the porcelain list,
+    // never from raw --show-toplevel (which yields the current worktree).
+    let main_worktree = first_worktree_path(start)?;
+    Ok(RepoContext {
+        layout: Layout::Standard {
+            main_worktree,
+            common_dir,
+        },
+    })
 }
 
 /// Worktree information
@@ -272,5 +430,143 @@ branch refs/heads/feature-branch
 
         let error = GitError::new("static str");
         assert_eq!(error.message, "static str");
+    }
+
+    // --- RepoContext / detect_repo ---
+
+    use std::process::Stdio;
+    use tempfile::TempDir;
+
+    fn git(dir: &Path, args: &[&str]) {
+        let status = Command::new("git")
+            .current_dir(dir)
+            .args(args)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .expect("failed to spawn git");
+        assert!(status.success(), "git {:?} failed", args);
+    }
+
+    /// Create a standard repo with one empty commit, returns the temp dir.
+    fn init_standard_repo() -> TempDir {
+        let tmp = TempDir::new().unwrap();
+        git(tmp.path(), &["init", "-q"]);
+        git(
+            tmp.path(),
+            &[
+                "-c",
+                "user.email=t@t",
+                "-c",
+                "user.name=t",
+                "commit",
+                "--allow-empty",
+                "-q",
+                "-m",
+                "init",
+            ],
+        );
+        tmp
+    }
+
+    #[test]
+    fn test_repo_context_bare_paths() {
+        let ctx = RepoContext {
+            layout: Layout::Bare {
+                hub_root: PathBuf::from("/project"),
+            },
+        };
+        assert_eq!(ctx.anchor_dir(), Path::new("/project"));
+        assert_eq!(ctx.state_dir(), PathBuf::from("/project/.wtree"));
+        assert_eq!(ctx.worktree_base(), PathBuf::from("/project"));
+        assert_eq!(ctx.main_worktree(), None);
+        assert!(!ctx.is_standard());
+    }
+
+    #[test]
+    fn test_repo_context_standard_paths() {
+        let ctx = RepoContext {
+            layout: Layout::Standard {
+                main_worktree: PathBuf::from("/project"),
+                common_dir: PathBuf::from("/project/.git"),
+            },
+        };
+        assert_eq!(ctx.anchor_dir(), Path::new("/project"));
+        assert_eq!(ctx.state_dir(), PathBuf::from("/project/.git/wtree"));
+        assert_eq!(
+            ctx.worktree_base(),
+            PathBuf::from("/project/.claude/worktrees")
+        );
+        assert_eq!(ctx.main_worktree(), Some(Path::new("/project")));
+        assert!(ctx.is_standard());
+    }
+
+    #[test]
+    fn test_detect_bare_hub_layout() {
+        // Reproduce the smoke `.git -> ./.bare` layout: a `.bare` git dir plus a
+        // `.git` file. Detection must classify it as Bare without --show-toplevel.
+        let tmp = TempDir::new().unwrap();
+        git(tmp.path(), &["init", "--bare", "-q", ".bare"]);
+        std::fs::write(tmp.path().join(".git"), "gitdir: ./.bare\n").unwrap();
+
+        let ctx = detect_repo_from(tmp.path()).unwrap();
+        match ctx.layout {
+            Layout::Bare { hub_root } => {
+                assert_eq!(hub_root, tmp.path());
+            }
+            other => panic!("expected Bare, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_detect_standard_repo() {
+        let tmp = init_standard_repo();
+        let ctx = detect_repo_from(tmp.path()).unwrap();
+        let state_dir = ctx.state_dir();
+        match &ctx.layout {
+            Layout::Standard {
+                main_worktree,
+                common_dir,
+            } => {
+                assert_eq!(
+                    main_worktree.canonicalize().unwrap(),
+                    tmp.path().canonicalize().unwrap()
+                );
+                assert_eq!(common_dir.file_name().unwrap(), ".git");
+                assert_eq!(state_dir, common_dir.join("wtree"));
+            }
+            other => panic!("expected Standard, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_detect_standard_from_linked_worktree() {
+        // From inside a *linked* worktree, detection must still resolve the
+        // primary worktree, not the linked one (adversarial finding #2).
+        let tmp = init_standard_repo();
+        git(
+            tmp.path(),
+            &["worktree", "add", "-q", "wt-linked", "-b", "feat"],
+        );
+        let linked = tmp.path().join("wt-linked");
+
+        let ctx = detect_repo_from(&linked).unwrap();
+        match ctx.layout {
+            Layout::Standard { main_worktree, .. } => {
+                assert_eq!(
+                    main_worktree.canonicalize().unwrap(),
+                    tmp.path().canonicalize().unwrap(),
+                    "main_worktree must be the primary checkout, not the linked one"
+                );
+            }
+            other => panic!("expected Standard, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_detect_outside_repo_errors() {
+        let tmp = TempDir::new().unwrap();
+        let err = detect_repo_from(tmp.path()).unwrap_err();
+        assert!(err.message.contains("Not inside a wtree repository"));
     }
 }
